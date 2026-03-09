@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -47,7 +47,7 @@ def _validate_ingest_rules(*, mime_type: str, file_size: int) -> None:
 
 def _build_storage_path(*, tenant_id: str, user_id: str, file_name: str) -> str:
     ext = Path(file_name).suffix or ".pdf"
-    timestamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     return f"{tenant_id}/{user_id}/{timestamp}-{uuid4()}{ext}"
 
 
