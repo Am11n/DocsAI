@@ -21,6 +21,12 @@ export interface UploadConfirmResponse {
   status: DocumentStatus;
 }
 
+export interface ReprocessResponse {
+  document_id: string;
+  status: DocumentStatus;
+  version: number;
+}
+
 export interface DocumentListItem {
   id: string;
   file_name: string;
@@ -157,6 +163,10 @@ export async function uploadToSignedUrl(uploadUrl: string, file: File): Promise<
 
 export function uploadConfirm(token: string, documentId: string): Promise<UploadConfirmResponse> {
   return apiPostAuth<UploadConfirmResponse>("/upload/confirm", token, { document_id: documentId });
+}
+
+export function reprocessDocument(token: string, documentId: string): Promise<ReprocessResponse> {
+  return apiPostAuth<ReprocessResponse>(`/documents/${documentId}/reprocess`, token, {});
 }
 
 export function semanticSearch(token: string, query: string, limit = 5): Promise<SearchResponse> {

@@ -133,6 +133,35 @@ class DocumentRepository:
             row = await conn.fetchrow(query, document_id, tenant_id)
             return dict(row) if row else None
 
+    async def queue_reprocess(self, *, tenant_id: str, document_id: UUID) -> tuple[bool, int | None]:
+        pool = get_db_pool()
+        fetch_sql = """
+        select status::text as status, version
+        from documents
+        where id = $1 and tenant_id = $2
+        for update
+        """
+        update_sql = """
+        update documents
+        set status = 'QUEUED',
+            version = version + 1,
+            last_error = null,
+            processing_started_at = null,
+            processing_completed_at = null,
+            updated_at = now()
+        where id = $1 and tenant_id = $2
+        returning version
+        """
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                row = await conn.fetchrow(fetch_sql, document_id, tenant_id)
+                if row is None:
+                    return False, None
+                if row["status"] in {"QUEUED", "PROCESSING"}:
+                    return False, int(row["version"])
+                updated = await conn.fetchrow(update_sql, document_id, tenant_id)
+                return True, int(updated["version"]) if updated else None
+
     async def list_documents(self, *, tenant_id: str, limit: int = 50) -> list[DocumentListItem]:
         pool = get_db_pool()
         query = """

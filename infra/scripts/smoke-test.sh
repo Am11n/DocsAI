@@ -11,4 +11,11 @@ curl -fsS "${API_BASE_URL}/health/live" >/dev/null
 curl -fsS "${API_BASE_URL}/health/ready" >/dev/null
 curl -fsS "${API_BASE_URL}/metrics" >/dev/null
 
+if [[ -n "${AUTH_TOKEN:-}" ]]; then
+  echo "Authenticated endpoint checks"
+  curl -fsS -H "Authorization: Bearer ${AUTH_TOKEN}" "${API_BASE_URL}/documents" >/dev/null
+else
+  echo "Skipping authenticated checks (set AUTH_TOKEN to enable)"
+fi
+
 echo "Smoke checks passed"

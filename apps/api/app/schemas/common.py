@@ -12,6 +12,7 @@ class ErrorCode(str, Enum):
     FORBIDDEN = "FORBIDDEN"
     DOCUMENT_NOT_FOUND = "DOCUMENT_NOT_FOUND"
     NEEDS_OCR = "NEEDS_OCR"
+    RATE_LIMITED = "RATE_LIMITED"
 
 
 class ApiError(BaseModel):

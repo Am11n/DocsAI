@@ -48,6 +48,12 @@ class UploadConfirmResponse(BaseModel):
     status: DocumentStatus
 
 
+class ReprocessResponse(BaseModel):
+    document_id: UUID
+    status: DocumentStatus
+    version: int
+
+
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1)
     limit: int = Field(default=5, ge=1, le=20)

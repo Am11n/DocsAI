@@ -19,6 +19,7 @@ from app.schemas.documents import (
     DocumentStatus,
     MetadataResponse,
     MetadataUpdateRequest,
+    ReprocessResponse,
     SearchRequest,
     SearchResponse,
     UploadConfirmRequest,
@@ -149,6 +150,35 @@ async def upload_confirm(
     )
     process_document.delay(auth.tenant_id, str(payload.document_id), x_correlation_id)
     return UploadConfirmResponse(document_id=payload.document_id, status=DocumentStatus.QUEUED)
+
+
+@router.post("/documents/{document_id}/reprocess", response_model=ReprocessResponse)
+async def reprocess_document(
+    document_id: UUID,
+    auth: AuthContext = Depends(get_auth_context),
+    x_correlation_id: str | None = Header(default=None),
+) -> ReprocessResponse:
+    queued, version = await repo.queue_reprocess(tenant_id=auth.tenant_id, document_id=document_id)
+    if version is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": ErrorCode.DOCUMENT_NOT_FOUND, "message": "Document not found for tenant"},
+        )
+    if not queued:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": ErrorCode.UPLOAD_FAILED, "message": "Document is already queued or processing"},
+        )
+    await repo.add_processing_event(
+        tenant_id=auth.tenant_id,
+        document_id=document_id,
+        phase="REPROCESS",
+        status="QUEUED",
+        message="Document reprocessing requested",
+        payload={"correlation_id": x_correlation_id, "version": version},
+    )
+    process_document.delay(auth.tenant_id, str(document_id), x_correlation_id)
+    return ReprocessResponse(document_id=document_id, status=DocumentStatus.QUEUED, version=version)
 
 
 @router.post("/upload", response_model=UploadResponse, deprecated=True)

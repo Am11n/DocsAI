@@ -27,7 +27,7 @@ async def correlation_and_rate_limit_middleware(request: Request, call_next) -> 
             )
             return JSONResponse(
                 status_code=429,
-                content={"code": ErrorCode.FORBIDDEN.value, "message": "Rate limit exceeded"},
+                content={"code": ErrorCode.RATE_LIMITED.value, "message": "Rate limit exceeded"},
                 headers={"x-correlation-id": correlation_id},
             )
 

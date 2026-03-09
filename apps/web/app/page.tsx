@@ -8,6 +8,7 @@ import {
   listDocuments,
   patchMetadata,
   ragChat,
+  reprocessDocument,
   semanticSearch,
   uploadConfirm,
   uploadInit,
@@ -119,6 +120,21 @@ export default function HomePage() {
     }
   }
 
+  async function triggerReprocess(documentId: string) {
+    if (!hasToken) return;
+    setLoading(true);
+    try {
+      const response = await reprocessDocument(token, documentId);
+      setMessage(`Reprocess queued for ${response.document_id} (version ${response.version})`);
+      setSelectedDocumentId(response.document_id);
+      await refreshDocuments();
+    } catch (err) {
+      setMessage(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function saveMetadata() {
     if (!hasToken || !selectedDocumentId || !metadataRaw.trim()) return;
     setLoading(true);
@@ -175,7 +191,13 @@ export default function HomePage() {
           {documents.map((doc) => (
             <li key={doc.id}>
               <button onClick={() => setSelectedDocumentId(doc.id)}>{doc.file_name}</button> - {doc.status}{" "}
-              {doc.last_error ? `(error: ${doc.last_error})` : ""}
+              {doc.last_error ? `(error: ${doc.last_error})` : ""}{" "}
+              <button
+                disabled={loading || !hasToken || doc.status === "QUEUED" || doc.status === "PROCESSING"}
+                onClick={() => triggerReprocess(doc.id)}
+              >
+                Reprocess
+              </button>
             </li>
           ))}
         </ul>

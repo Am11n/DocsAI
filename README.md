@@ -36,6 +36,7 @@ MVP scaffold for AI-driven document automation with:
 ## Metadata and status
 
 - `GET /documents`: tenant-scoped document list with processing status.
+- `POST /documents/{id}/reprocess`: idempotent reprocess trigger (increments `version`, re-queues job).
 - `GET /metadata/{id}`: fetch extracted metadata.
 - `PATCH /metadata/{id}`: manual metadata override (`review_status`, `is_manually_edited`).
 
