@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from app.auth.dependencies import AuthContext, get_auth_context
 from app.clients.openai_client import OpenAIClient
 from app.clients.storage import StorageClient
+from app.core.metrics import metrics
 from app.core.settings import settings
 from app.repositories.documents import DocumentRepository
 from app.schemas.common import ErrorCode
@@ -59,6 +60,11 @@ async def health_ready() -> dict[str, str]:
     return {"status": "ready"}
 
 
+@router.get("/metrics")
+async def get_metrics() -> dict[str, object]:
+    return metrics.snapshot()
+
+
 @router.get("/documents", response_model=DocumentListResponse)
 async def list_documents(auth: AuthContext = Depends(get_auth_context)) -> DocumentListResponse:
     documents = await repo.list_documents(tenant_id=auth.tenant_id, limit=100)
@@ -71,6 +77,7 @@ async def upload_init(
     auth: AuthContext = Depends(get_auth_context),
     _x_correlation_id: str | None = Header(default=None),
 ) -> UploadInitResponse:
+    metrics.inc("upload_init_total")
     try:
         _validate_ingest_rules(mime_type=payload.mime_type, file_size=payload.file_size)
     except UnsupportedFileTypeError as exc:
@@ -115,6 +122,7 @@ async def upload_confirm(
     auth: AuthContext = Depends(get_auth_context),
     x_correlation_id: str | None = Header(default=None),
 ) -> UploadConfirmResponse:
+    metrics.inc("upload_confirm_total")
     doc = await repo.get_document_for_processing(tenant_id=auth.tenant_id, document_id=payload.document_id)
     if not doc:
         raise HTTPException(
@@ -170,37 +178,41 @@ async def upload_document_legacy(
 
 @router.post("/search", response_model=SearchResponse)
 async def search(payload: SearchRequest, auth: AuthContext = Depends(get_auth_context)) -> SearchResponse:
-    query_embedding = await openai_client.embed_query(payload.query)
-    results = await repo.semantic_search_rpc(
-        tenant_id=auth.tenant_id,
-        query_embedding=query_embedding,
-        limit=payload.limit,
-    )
+    metrics.inc("search_total")
+    with metrics.timer("search_ms"):
+        query_embedding = await openai_client.embed_query(payload.query)
+        results = await repo.semantic_search_rpc(
+            tenant_id=auth.tenant_id,
+            query_embedding=query_embedding,
+            limit=payload.limit,
+        )
     return SearchResponse(results=results)
 
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(payload: ChatRequest, auth: AuthContext = Depends(get_auth_context)) -> ChatResponse:
-    query_embedding = await openai_client.embed_query(payload.query)
-    results = await repo.semantic_search_rpc(
-        tenant_id=auth.tenant_id,
-        query_embedding=query_embedding,
-        limit=payload.top_k,
-        document_ids=payload.document_ids,
-    )
-    contexts = [
-        f"[chunk_id={r.chunk_id} document_id={r.document_id} score={r.score:.4f}] {r.snippet}" for r in results
-    ]
-    answer = await openai_client.answer_with_context(query=payload.query, contexts=contexts)
-    sources = [
-        ChatSource(
-            document_id=r.document_id,
-            chunk_id=r.chunk_id,
-            chunk_index=r.chunk_index,
-            score=r.score,
+    metrics.inc("chat_total")
+    with metrics.timer("chat_ms"):
+        query_embedding = await openai_client.embed_query(payload.query)
+        results = await repo.semantic_search_rpc(
+            tenant_id=auth.tenant_id,
+            query_embedding=query_embedding,
+            limit=payload.top_k,
+            document_ids=payload.document_ids,
         )
-        for r in results
-    ]
+        contexts = [
+            f"[chunk_id={r.chunk_id} document_id={r.document_id} score={r.score:.4f}] {r.snippet}" for r in results
+        ]
+        answer = await openai_client.answer_with_context(query=payload.query, contexts=contexts)
+        sources = [
+            ChatSource(
+                document_id=r.document_id,
+                chunk_id=r.chunk_id,
+                chunk_index=r.chunk_index,
+                score=r.score,
+            )
+            for r in results
+        ]
     return ChatResponse(answer=answer, sources=sources)
 
 

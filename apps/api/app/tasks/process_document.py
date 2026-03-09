@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from app.clients.openai_client import OpenAIClient
 from app.clients.storage import StorageClient
 from app.core.db import init_db_pool
+from app.core.metrics import metrics
 from app.core.settings import settings
 from app.repositories.documents import DocumentRepository
 from app.schemas.common import ErrorCode
@@ -61,7 +62,8 @@ async def _process_document_async(tenant_id: str, doc_uuid: UUID, correlation_id
     full_text = "\n".join(text for _, text in page_texts)
 
     try:
-        metadata = await openai_client.extract_metadata(full_text)
+        with metrics.timer("metadata_extraction_ms"):
+            metadata = await openai_client.extract_metadata(full_text)
     except ValidationError as exc:
         raise MetadataExtractionError(f"Invalid metadata JSON schema: {exc}") from exc
     except Exception as exc:  # noqa: BLE001
@@ -92,7 +94,8 @@ async def _process_document_async(tenant_id: str, doc_uuid: UUID, correlation_id
         overlap=settings.chunk_overlap_chars,
     )
     try:
-        embeddings = await openai_client.embed_texts([chunk.text for chunk in chunk_candidates])
+        with metrics.timer("embedding_generation_ms"):
+            embeddings = await openai_client.embed_texts([chunk.text for chunk in chunk_candidates])
     except Exception as exc:  # noqa: BLE001
         raise EmbeddingGenerationError(f"Embedding generation failed: {exc}") from exc
 
@@ -145,6 +148,7 @@ def _map_error_code(exc: Exception) -> ErrorCode:
 def process_document(self, tenant_id: str, document_id: str, correlation_id: str | None = None) -> None:
     doc_uuid = UUID(document_id)
     asyncio.run(init_db_pool())
+    metrics.inc("processing_jobs_total")
     logger.info(
         "document_processing_started",
         tenant_id=tenant_id,
@@ -154,6 +158,7 @@ def process_document(self, tenant_id: str, document_id: str, correlation_id: str
     )
     try:
         asyncio.run(_process_document_async(tenant_id, doc_uuid, correlation_id))
+        metrics.inc("processing_success_total")
         logger.info(
             "document_processing_completed",
             tenant_id=tenant_id,
@@ -168,6 +173,7 @@ def process_document(self, tenant_id: str, document_id: str, correlation_id: str
         MetadataExtractionError,
         EmbeddingGenerationError,
     ) as exc:
+        metrics.inc("processing_failed_total")
         code = _map_error_code(exc)
         asyncio.run(
             repo.set_failed(
@@ -195,6 +201,7 @@ def process_document(self, tenant_id: str, document_id: str, correlation_id: str
             error=str(exc),
         )
     except Exception as exc:  # noqa: BLE001
+        metrics.inc("processing_failed_total")
         code = _map_error_code(exc)
         asyncio.run(
             repo.set_failed(

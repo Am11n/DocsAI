@@ -32,3 +32,19 @@ MVP scaffold for AI-driven document automation with:
 
 - `POST /search`: creates query embedding and runs pgvector similarity via `search_document_chunks` RPC.
 - `POST /chat`: retrieves top-k chunks and generates grounded answer with `sources[]`.
+
+## Metadata and status
+
+- `GET /documents`: tenant-scoped document list with processing status.
+- `GET /metadata/{id}`: fetch extracted metadata.
+- `PATCH /metadata/{id}`: manual metadata override (`review_status`, `is_manually_edited`).
+
+## Observability and safety
+
+- `GET /metrics`: in-memory counters/timers for upload/search/chat/processing.
+- Correlation ID supported through `x-correlation-id` request/response header.
+- Simple rate limiter protects `/upload/init`, `/upload/confirm`, `/search`, `/chat`.
+
+## Smoke test
+
+- `API_BASE_URL=http://localhost:8000 infra/scripts/smoke-test.sh`
